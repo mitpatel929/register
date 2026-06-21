@@ -222,6 +222,18 @@
     </details>
 
     <details open>
+      <summary><span>Day-End Cash <span style="color:var(--mut2);font-weight:400">&middot; machine + leftover</span></span>
+        <span><span class="st" id="nsStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
+      <div class="body">
+        <div class="hint">Just for your record: combine today's machine cash with any leftover bank cash, and see exactly how the total adds up.</div>
+        <div class="frow"><div class="fname">Machine Cash IN <small style="color:var(--mut2);font-size:10px;margin-left:5px">today's total</small></div><div id="nsMachine" style="width:122px;text-align:right;font-family:var(--mono);font-size:15px;color:var(--mut);font-variant-numeric:tabular-nums">$0.00</div></div>
+        <div class="frow"><div class="fname">+ Leftover bank cash <small style="color:var(--mut2);font-size:10px;margin-left:5px">remaining</small></div><input class="scal" id="carryOver" inputmode="decimal" placeholder="0"></div>
+        <div class="subtot"><div class="l">Combined Total</div><div class="n" id="nsBig">$0.00</div></div>
+        <div id="nsBreak" style="margin-top:9px;font-family:var(--mono);font-size:12.5px;color:var(--brass);text-align:right;font-variant-numeric:tabular-nums"></div>
+      </div>
+    </details>
+
+    <details open>
       <summary><span>Payouts <span style="color:var(--mut2);font-weight:400">&middot; store &amp; staff</span></span>
         <span><span class="st" id="payStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
       <div class="body">
@@ -280,7 +292,7 @@ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){
 var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);MGROUPS.push("sys_"+i);});
 var OTHERGROUPS=["b1pay","b1add","b2pay","b2add","storePay","empPay"];
 var GROUPS=MGROUPS.concat(OTHERGROUPS);
-var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start"];
+var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start","carryOver"];
 
 /* ---- math helpers ---- */
 function evalExpr(raw){
@@ -407,6 +419,14 @@ function recalc(){
   setText("storeTot",money(sp)); setText("empTot",money(ep));
   setText("payStat",money(sp+ep));
 
+  // Next day start = today's machine cash in + leftover bank cash (carry-over), with the math shown
+  var carry=sval("carryOver");
+  var newStart=cashTotal+carry;
+  setText("nsMachine",money(cashTotal));
+  setText("nsBig",money(newStart));
+  setText("nsStat",money(newStart));
+  setText("nsBreak", money(cashTotal)+"  +  "+money(carry)+"  =  "+money(newStart));
+
   /* per-group running sums */
   GROUPS.forEach(function(id){
     var el=document.getElementById("gsum_"+id); if(!el) return;
@@ -470,7 +490,8 @@ function dayTotals(d){
   var gl=(evalExpr(d.endCash)||0)-(evalExpr(d.startCash)||0);
   var cashSale=fieldSum(d.cashSale), cardSale=fieldSum(d.cardSale);
   var os=gl-cashSale, totSales=cashSale+cardSale;
-  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st,cashSale:cashSale,cardSale:cardSale,os:os,totSales:totSales};
+  var carry=fieldSum(d.carryOver), newStart=ct+carry;
+  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st,cashSale:cashSale,cardSale:cardSale,os:os,totSales:totSales,carry:carry,newStart:newStart};
 }
 function renderHist(){
   var days=getDays().slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
@@ -489,6 +510,7 @@ function renderHist(){
         '<div><div class="k">Store pay</div><div class="v">'+money(t.sp)+'</div></div>'+
         '<div><div class="k">Staff pay</div><div class="v">'+money(t.ep)+'</div></div>'+
       '</div>'+
+      ((t.ct>0||t.carry>0)?'<div style="margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--mut);text-align:center">Day-end total: <span style="color:var(--brass)">'+money(t.newStart)+'</span>  ('+money(t.ct)+' + '+money(t.carry)+')</div>':'')+
       '<div class="hact"><button onclick="editDay(\''+d.date+'\')">Open / Edit</button>'+
       '<button class="del" onclick="delDay(\''+d.date+'\')">Delete</button></div></div>';
   }).join("");
@@ -504,7 +526,7 @@ function exportCSV(){
   MACHINES.forEach(function(m){head.push("Cash "+m[0]);});
   head.push("Total Cash IN");
   MACHINES.forEach(function(m){head.push("POS "+m[0]);});
-  head.push("Total System IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 End","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 End","Store Payout","Employee Payout","Notes");
+  head.push("Total System IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 End","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 End","Store Payout","Employee Payout","Leftover Bank Cash","Day-End Total","Notes");
   var rows=[head.join(",")];
   days.forEach(function(d){
     var t=dayTotals(d);
@@ -517,7 +539,7 @@ function exportCSV(){
     r.push(t.st.toFixed(2),t.vr.toFixed(2),
       b1s,b1p,b1a,(b1s-b1p+b1a).toFixed(2),
       b2s,b2p,b2a,(b2s-b2p+b2a).toFixed(2),
-      t.sp.toFixed(2),t.ep.toFixed(2),'"'+String(d.notes||"").replace(/"/g,'""')+'"');
+      t.sp.toFixed(2),t.ep.toFixed(2),t.carry.toFixed(2),t.newStart.toFixed(2),'"'+String(d.notes||"").replace(/"/g,'""')+'"');
     rows.push(r.join(","));
   });
   var blob=new Blob([rows.join("\n")],{type:"text/csv"}), fname="register-sale-"+isoToday()+".csv";
