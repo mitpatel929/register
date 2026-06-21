@@ -172,12 +172,16 @@
     </div>
 
     <details open>
-      <summary><span>Register Cash <span style="color:var(--mut2);font-weight:400">&middot; gain/loss</span></span>
+      <summary><span>Register Cash <span style="color:var(--mut2);font-weight:400">&middot; sales + over/short</span></span>
         <span><span class="st" id="glStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
       <div class="body">
         <div class="frow"><div class="fname">Start Cash</div><input class="scal" id="startCash" inputmode="decimal" placeholder="250"></div>
-        <div class="frow"><div class="fname">End Cash</div><input class="scal" id="endCash" inputmode="decimal" placeholder="0"></div>
-        <div class="subtot"><div class="l">Gain / Loss</div><div class="n" id="glBig">$0.00</div></div>
+        <div class="frow"><div class="fname">End Cash <small style="color:var(--mut2);font-size:10px;margin-left:5px">counted</small></div><input class="scal" id="endCash" inputmode="decimal" placeholder="0"></div>
+        <div class="frow"><div class="fname">Cash Sale <small style="color:var(--mut2);font-size:10px;margin-left:5px">from receipts</small></div><input class="scal" id="cashSale" inputmode="decimal" placeholder="0"></div>
+        <div class="frow"><div class="fname">Card Sale</div><input class="scal" id="cardSale" inputmode="decimal" placeholder="0"></div>
+        <div class="subtot"><div class="l">Over / Short <small style="color:var(--mut2);font-size:9px;display:block;text-transform:none;letter-spacing:0">drawer vs. cash receipts</small></div><div class="n" id="osBig">$0.00</div></div>
+        <div class="subtot" style="margin-top:9px;padding-top:10px"><div class="l">Drawer change</div><div class="n" id="glBig" style="font-size:15px">$0.00</div></div>
+        <div class="subtot" style="margin-top:9px;padding-top:10px"><div class="l">Total Sales <small style="color:var(--mut2);font-size:9px;display:block;text-transform:none;letter-spacing:0">cash + card</small></div><div class="n" id="tsBig" style="font-size:15px">$0.00</div></div>
       </div>
     </details>
 
@@ -276,7 +280,7 @@ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){
 var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);MGROUPS.push("sys_"+i);});
 var OTHERGROUPS=["b1pay","b1add","b2pay","b2add","storePay","empPay"];
 var GROUPS=MGROUPS.concat(OTHERGROUPS);
-var SCALARS=["startCash","endCash","b1start","b2start"];
+var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start"];
 
 /* ---- math helpers ---- */
 function evalExpr(raw){
@@ -384,7 +388,16 @@ function recalc(){
   var gl=sval("endCash")-sval("startCash");
   var glColor=gl<0?"var(--red)":(gl>0?"var(--green)":"var(--brass)");
   var glB=document.getElementById("glBig"); glB.textContent=money(gl); glB.style.color=glColor;
-  var glS=document.getElementById("glStat"); glS.textContent=money(gl); glS.style.color=glColor;
+
+  // Over/Short = drawer change minus the cash sale that receipts say should be there
+  var overShort=gl - sval("cashSale");
+  var osColor=overShort<0?"var(--red)":(overShort>0?"var(--green)":"var(--brass)");
+  var osB=document.getElementById("osBig");
+  if(osB){ osB.textContent=(overShort>0?"+":"")+money(overShort); osB.style.color=osColor; }
+  var totalSales=sval("cashSale")+sval("cardSale");
+  setText("tsBig",money(totalSales));
+  // header glance shows over/short (the "did my drawer balance" number)
+  var glS=document.getElementById("glStat"); glS.textContent=(overShort>0?"+":"")+money(overShort); glS.style.color=osColor;
 
   var b1=sval("b1start")-sumGroup("b1pay").total+sumGroup("b1add").total;
   var b2=sval("b2start")-sumGroup("b2pay").total+sumGroup("b2add").total;
@@ -455,18 +468,23 @@ function dayTotals(d){
   (d.sys||[]).forEach(function(x){ st+=fieldSum(x); });
   var sp=fieldSum(d.storePay), ep=fieldSum(d.empPay);
   var gl=(evalExpr(d.endCash)||0)-(evalExpr(d.startCash)||0);
-  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st};
+  var cashSale=fieldSum(d.cashSale), cardSale=fieldSum(d.cardSale);
+  var os=gl-cashSale, totSales=cashSale+cardSale;
+  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st,cashSale:cashSale,cardSale:cardSale,os:os,totSales:totSales};
 }
 function renderHist(){
   var days=getDays().slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
   var box=document.getElementById("histList");
   if(!days.length){ box.innerHTML='<div class="empty"><b>No saved days yet</b><span>Fill in a day on the Today tab and tap Save day. It\'ll show up here.</span></div>'; return; }
   box.innerHTML=days.map(function(d){
-    var t=dayTotals(d), glc=t.gl<0?"bad":(t.gl>0?"ok":"");
+    var t=dayTotals(d), osc=t.os<0?"bad":(t.os>0?"ok":"");
     return '<div class="hcard"><div class="top"><div class="hd">'+fmtDate(d.date)+
-      '<small>'+(Math.abs(t.vr)<0.005?"reconciled":"var "+(t.vr>=0?"+":"")+money(t.vr))+'</small></div>'+
-      '<div class="gl '+glc+'">'+money(t.gl)+'</div></div>'+
+      '<small>'+(Math.abs(t.os)<0.005?"drawer balanced":"over/short")+'</small></div>'+
+      '<div class="gl '+osc+'">'+(t.os>0?"+":"")+money(t.os)+'</div></div>'+
       '<div class="hgrid">'+
+        '<div><div class="k">Cash sale</div><div class="v">'+money(t.cashSale)+'</div></div>'+
+        '<div><div class="k">Card sale</div><div class="v">'+money(t.cardSale)+'</div></div>'+
+        '<div><div class="k">Drawer &Delta;</div><div class="v">'+money(t.gl)+'</div></div>'+
         '<div><div class="k">Cash IN</div><div class="v">'+money(t.ct)+'</div></div>'+
         '<div><div class="k">Store pay</div><div class="v">'+money(t.sp)+'</div></div>'+
         '<div><div class="k">Staff pay</div><div class="v">'+money(t.ep)+'</div></div>'+
@@ -482,7 +500,7 @@ function delDay(date){ if(!confirm("Delete "+fmtDate(date)+"? This can't be undo
 function exportCSV(){
   var days=getDays().slice().sort(function(a,b){return (a.date||"").localeCompare(b.date||"");});
   if(!days.length){ toast("Nothing to export"); return; }
-  var head=["Date","Start Cash","End Cash","Gain/Loss"];
+  var head=["Date","Start Cash","End Cash","Cash Sale","Card Sale","Drawer Change","Over/Short","Total Sales"];
   MACHINES.forEach(function(m){head.push("Cash "+m[0]);});
   head.push("Total Cash IN");
   MACHINES.forEach(function(m){head.push("POS "+m[0]);});
@@ -492,7 +510,7 @@ function exportCSV(){
     var t=dayTotals(d);
     var b1s=fieldSum(d.b1start), b1p=fieldSum(d.b1pay), b1a=fieldSum(d.b1add);
     var b2s=fieldSum(d.b2start), b2p=fieldSum(d.b2pay), b2a=fieldSum(d.b2add);
-    var r=[d.date, fieldSum(d.startCash), fieldSum(d.endCash), t.gl.toFixed(2)];
+    var r=[d.date, fieldSum(d.startCash), fieldSum(d.endCash), t.cashSale.toFixed(2), t.cardSale.toFixed(2), t.gl.toFixed(2), t.os.toFixed(2), t.totSales.toFixed(2)];
     (d.cash||[]).forEach(function(x){ r.push(fieldSum(x).toFixed(2)); });
     r.push(t.ct.toFixed(2));
     (d.sys||[]).forEach(function(x){ r.push(fieldSum(x).toFixed(2)); });
