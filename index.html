@@ -162,7 +162,7 @@
       <div class="brand" id="todayMini" style="color:var(--mut2)"></div>
     </div>
     <div class="legend">Redeem &rarr; R&nbsp;&nbsp;Card &rarr; CD&nbsp;&nbsp;Win &rarr; W&nbsp;&nbsp;Store &rarr; S</div>
-    <div class="tape">
+    <div class="tape" id="tapeBox">
       <div>
         <div class="lab">Total Cash IN</div>
         <div class="big" id="tapeBig">$0.00</div>
@@ -326,6 +326,7 @@ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){
 
 /* group ids (multi-amount) and scalar ids */
 var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);});
+var dirty=false;
 var OTHERGROUPS=["sysrec","b1pay","b1add","b2pay","b2add","storePay","empPay"];
 var GROUPS=MGROUPS.concat(OTHERGROUPS);
 var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start","carryOver","b1count","b2count"];
@@ -421,7 +422,7 @@ OTHERGROUPS.forEach(function(id){ buildGroup(id,true); addAmt(id,"",false); });
 
 /* recalc on any input */
 document.addEventListener("input", function(e){
-  if(e.target && (e.target.classList.contains("amt")||e.target.classList.contains("scal")||e.target.id==="notes")) recalc();
+  if(e.target && (e.target.classList.contains("amt")||e.target.classList.contains("scal")||e.target.id==="notes")){ dirty=true; recalc(); }
 });
 
 function sval(id){ var v=evalExpr((document.getElementById(id)||{}).value); return isNaN(v)?0:v; }
@@ -530,9 +531,31 @@ function saveDay(){
   var days=getDays(), i=days.findIndex(function(x){return x.date===d.date;});
   if(i>-1) days[i]=d; else days.push(d);
   putDays(days);
+  dirty=false;
   toast(storeOK?("Saved "+fmtDate(d.date)):"Saved (this session only)");
 }
-function newDay(){ load({date:isoToday()}); showTab("today"); toast("New blank day"); }
+function newDay(){ load({date:isoToday()}); dirty=false; showTab("today"); toast("New blank day"); }
+/* Open today's sheet: reopen today's saved entry if it exists, else a clean blank sheet for today.
+   If the form is already on today's date (e.g. mid-entry), keep it so work isn't lost. */
+function openToday(){
+  var today=isoToday();
+  if(document.getElementById("dDate").value!==today){
+    var saved=getDays().find(function(x){return x.date===today;});
+    load(saved||{date:today});
+    dirty=false;
+  }
+  showTab("today");
+}
+/* When the app is reopened on a later calendar day and nothing is half-entered, start fresh on today. */
+function freshOnShow(){
+  if(!dirty && document.getElementById("dDate").value!==isoToday()){
+    var saved=getDays().find(function(x){return x.date===isoToday();});
+    load(saved||{date:isoToday()});
+    dirty=false;
+  }
+}
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) freshOnShow(); });
+window.addEventListener("pageshow", freshOnShow);
 
 /* ---- totals for history/export ---- */
 function fieldSum(v){
@@ -578,7 +601,7 @@ function renderHist(){
       '<button class="del" onclick="delDay(\''+d.date+'\')">Delete</button></div></div>';
   }).join("");
 }
-function editDay(date){ var d=getDays().find(function(x){return x.date===date;}); if(d){ load(d); showTab("today"); } }
+function editDay(date){ var d=getDays().find(function(x){return x.date===date;}); if(d){ load(d); dirty=false; showTab("today"); } }
 function delDay(date){ if(!confirm("Delete "+fmtDate(date)+"? This can't be undone.")) return; putDays(getDays().filter(function(x){return x.date!==date;})); renderHist(); toast("Deleted"); }
 
 /* ---- CSV ---- */
@@ -632,6 +655,7 @@ function showTab(t){
   document.getElementById("tabHist").classList.toggle("on",isHist);
   if(isHist) renderHist();
   if(isHome) renderHome();
+  document.getElementById("tapeBox").classList.toggle("hidden",!isToday);
   window.scrollTo(0,0);
 }
 function renderHome(){
@@ -639,7 +663,7 @@ function renderHome(){
   var days=getDays();
   if(!days.length){
     box.innerHTML='<div class="empty"><b>No saved days yet</b><span>Save a day on the Today tab and your monthly totals will appear here.</span></div>'+
-      '<button class="dbtn" onclick="showTab(\'today\')">Open today\u2019s sheet \u2192</button>';
+      '<button class="dbtn" onclick="openToday()">Open today\u2019s sheet \u2192</button>';
     return;
   }
   var now=new Date();
@@ -661,7 +685,7 @@ function renderHome(){
   html+=tile("Cash \u2212 System", signed(s.vr), {color:col(s.vr)});
   html+=tile("Bank Over/Short", signed(s.bank), {color:col(s.bank)});
   html+='</div>';
-  html+='<button class="dbtn" onclick="showTab(\'today\')">Open today\u2019s sheet \u2192</button>';
+  html+='<button class="dbtn" onclick="openToday()">Open today\u2019s sheet \u2192</button>';
 
   var recent=days.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");}).slice(0,5);
   html+='<div class="dlabel">Recent days</div>';
