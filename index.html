@@ -212,14 +212,18 @@
             <div class="ff"><span>Start balance</span><input class="scal" id="b1start" inputmode="decimal" placeholder="0"></div>
             <div class="bgrp"><span class="lbl">Payouts &mdash; one per line</span><div id="grp_b1pay"></div></div>
             <div class="bgrp"><span class="lbl">Added / Deposits</span><div id="grp_b1add"></div></div>
-            <div class="endbal"><span>End</span><b id="b1end">$0.00</b></div>
+            <div class="endbal"><span>Expected end</span><b id="b1end">$0.00</b></div>
+            <div class="ff" style="margin-top:10px"><span>Counted (actual)</span><input class="scal" id="b1count" inputmode="decimal" placeholder="count"></div>
+            <div class="endbal"><span>Over / Short</span><b id="b1diff">&mdash;</b></div>
           </div>
           <div class="card">
             <h4>Bank 2</h4>
             <div class="ff"><span>Start balance</span><input class="scal" id="b2start" inputmode="decimal" placeholder="0"></div>
             <div class="bgrp"><span class="lbl">Payouts &mdash; one per line</span><div id="grp_b2pay"></div></div>
             <div class="bgrp"><span class="lbl">Added / Deposits</span><div id="grp_b2add"></div></div>
-            <div class="endbal"><span>End</span><b id="b2end">$0.00</b></div>
+            <div class="endbal"><span>Expected end</span><b id="b2end">$0.00</b></div>
+            <div class="ff" style="margin-top:10px"><span>Counted (actual)</span><input class="scal" id="b2count" inputmode="decimal" placeholder="count"></div>
+            <div class="endbal"><span>Over / Short</span><b id="b2diff">&mdash;</b></div>
           </div>
         </div>
       </div>
@@ -296,7 +300,7 @@ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){
 var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);});
 var OTHERGROUPS=["sysrec","b1pay","b1add","b2pay","b2add","storePay","empPay"];
 var GROUPS=MGROUPS.concat(OTHERGROUPS);
-var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start","carryOver"];
+var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start","carryOver","b1count","b2count"];
 
 /* ---- math helpers ---- */
 function evalExpr(raw){
@@ -424,6 +428,8 @@ function recalc(){
   var b1=sval("b1start")-sumGroup("b1pay").total+sumGroup("b1add").total;
   var b2=sval("b2start")-sumGroup("b2pay").total+sumGroup("b2add").total;
   setText("b1end",money(b1)); setText("b2end",money(b2));
+  bankDiff("b1count","b1diff",b1);
+  bankDiff("b2count","b2diff",b2);
 
   var sp=sumGroup("storePay").total, ep=sumGroup("empPay").total;
   setText("storeTot",money(sp)); setText("empTot",money(ep));
@@ -452,6 +458,15 @@ function recalc(){
   vEl.className="v "+(Math.abs(v)<0.005?"ok":"bad");
 }
 function setText(id,t){ var el=document.getElementById(id); if(el) el.textContent=t; }
+function bankDiff(countId, outId, expected){
+  var raw=(document.getElementById(countId).value||"").trim();
+  var out=document.getElementById(outId);
+  if(!out) return;
+  if(raw===""){ out.textContent="\u2014"; out.style.color="var(--mut2)"; return; }
+  var diff=sval(countId)-expected;
+  out.textContent=(diff>0?"+":"")+money(diff);
+  out.style.color = diff<0?"var(--red)":(diff>0?"var(--green)":"var(--brass)");
+}
 
 /* ---- collect / load ---- */
 function collect(){
@@ -506,7 +521,12 @@ function dayTotals(d){
   var cashSale=fieldSum(d.cashSale), cardSale=fieldSum(d.cardSale);
   var os=gl-cashSale, totSales=cashSale+cardSale;
   var carry=fieldSum(d.carryOver), newStart=ct+carry;
-  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st,cashSale:cashSale,cardSale:cardSale,os:os,totSales:totSales,carry:carry,newStart:newStart};
+  var b1exp=fieldSum(d.b1start)-fieldSum(d.b1pay)+fieldSum(d.b1add);
+  var b2exp=fieldSum(d.b2start)-fieldSum(d.b2pay)+fieldSum(d.b2add);
+  var b1count=fieldSum(d.b1count), b2count=fieldSum(d.b2count);
+  var b1diff=(String(d.b1count||"").trim()==="")?0:(b1count-b1exp);
+  var b2diff=(String(d.b2count||"").trim()==="")?0:(b2count-b2exp);
+  return {ct:ct,st:st,sp:sp,ep:ep,gl:gl,vr:ct-st,cashSale:cashSale,cardSale:cardSale,os:os,totSales:totSales,carry:carry,newStart:newStart,b1exp:b1exp,b2exp:b2exp,b1count:b1count,b2count:b2count,b1diff:b1diff,b2diff:b2diff};
 }
 function renderHist(){
   var days=getDays().slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
@@ -540,7 +560,7 @@ function exportCSV(){
   var head=["Date","Start Cash","End Cash","Cash Sale","Card Sale","Drawer Change","Over/Short","Total Sales"];
   MACHINES.forEach(function(m){head.push("Cash "+m[0]);});
   head.push("Total Cash IN");
-  head.push("System Bill IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 End","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 End","Store Payout","Employee Payout","Leftover Bank Cash","Day-End Total","Notes");
+  head.push("System Bill IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 Expected","Bank1 Counted","Bank1 Over/Short","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 Expected","Bank2 Counted","Bank2 Over/Short","Store Payout","Employee Payout","Leftover Bank Cash","Day-End Total","Notes");
   var rows=[head.join(",")];
   days.forEach(function(d){
     var t=dayTotals(d);
@@ -550,8 +570,8 @@ function exportCSV(){
     (d.cash||[]).forEach(function(x){ r.push(fieldSum(x).toFixed(2)); });
     r.push(t.ct.toFixed(2));
     r.push(t.st.toFixed(2),t.vr.toFixed(2),
-      b1s,b1p,b1a,(b1s-b1p+b1a).toFixed(2),
-      b2s,b2p,b2a,(b2s-b2p+b2a).toFixed(2),
+      b1s,b1p,b1a,t.b1exp.toFixed(2),t.b1count.toFixed(2),t.b1diff.toFixed(2),
+      b2s,b2p,b2a,t.b2exp.toFixed(2),t.b2count.toFixed(2),t.b2diff.toFixed(2),
       t.sp.toFixed(2),t.ep.toFixed(2),t.carry.toFixed(2),t.newStart.toFixed(2),'"'+String(d.notes||"").replace(/"/g,'""')+'"');
     rows.push(r.join(","));
   });
