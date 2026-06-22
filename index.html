@@ -138,6 +138,20 @@
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--surface2);border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:11px;font-size:13px;font-weight:600;z-index:50;transition:.25s;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.5)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .savenote{font-size:11px;color:var(--mut2);text-align:center;margin-top:18px;line-height:1.5}
+  .dmonth{font-family:var(--mono);font-size:13px;color:var(--brass);text-align:center;margin:16px 0 2px;letter-spacing:.04em}
+  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 14px}
+  .tile .k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
+  .tile .v{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:6px;color:var(--ink)}
+  .tile .v.brass{color:var(--brass)}
+  .dbtn{display:block;width:100%;text-align:center;background:var(--brass);color:#1b1505;border:0;border-radius:13px;font-family:var(--ui);font-weight:700;font-size:15px;padding:15px;margin-top:16px;letter-spacing:.02em}
+  .dbtn:active{background:var(--brass-dim)}
+  .dlabel{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:22px 2px 2px;font-weight:600}
+  .drow{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-top:8px}
+  .drow .dd{font-size:13px;font-weight:600}
+  .drow .dd small{display:block;color:var(--mut2);font-size:10px;font-family:var(--mono);margin-top:2px;font-weight:400}
+  .drow .dv{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+  .drow .dv small{display:block;color:var(--mut2);font-size:10px;font-weight:400}
 </style>
 </head>
 <body>
@@ -160,10 +174,15 @@
       </div>
     </div>
     <div class="tabs">
+      <button id="tabHome" onclick="showTab('home')">Home</button>
       <button id="tabToday" class="on" onclick="showTab('today')">Today</button>
       <button id="tabHist" onclick="showTab('hist')">History</button>
     </div>
   </header>
+
+  <main id="viewHome" class="hidden">
+    <div id="homeContent"></div>
+  </main>
 
   <main id="viewToday">
     <div class="daterow">
@@ -171,6 +190,12 @@
       <input type="date" id="dDate">
     </div>
 
+    <div class="tabs" style="margin-top:12px">
+      <button id="subReg" class="on" onclick="showSub('reg')">Register</button>
+      <button id="subMac" onclick="showSub('mac')">Machines</button>
+    </div>
+
+    <div id="grpRegister">
     <details open>
       <summary><span>Register Cash <span style="color:var(--mut2);font-weight:400">&middot; sales + over/short</span></span>
         <span><span class="st" id="glStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
@@ -184,7 +209,9 @@
         <div class="subtot" style="margin-top:9px;padding-top:10px"><div class="l">Total Sales <small style="color:var(--mut2);font-size:9px;display:block;text-transform:none;letter-spacing:0">cash + card</small></div><div class="n" id="tsBig" style="font-size:15px">$0.00</div></div>
       </div>
     </details>
+    </div>
 
+    <div id="grpMachines" class="hidden">
     <details open>
       <summary><span>Machine Count <span style="color:var(--mut2);font-weight:400">&middot; cash</span></span>
         <span><span class="st" id="cashStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
@@ -259,6 +286,7 @@
         </div>
       </div>
     </details>
+    </div>
 
     <details>
       <summary><span>Notes</span><span class="chev">&rsaquo;</span></summary>
@@ -594,13 +622,64 @@ function fmtDate(iso){ if(!iso)return "—"; var p=iso.split("-"); if(p.length!=
   var mo=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return mo[(+p[1])-1]+" "+(+p[2])+", "+p[0]; }
 function showTab(t){
-  var today=t==="today";
-  document.getElementById("viewToday").classList.toggle("hidden",!today);
-  document.getElementById("viewHist").classList.toggle("hidden",today);
-  document.getElementById("savebar").classList.toggle("hidden",!today);
-  document.getElementById("tabToday").classList.toggle("on",today);
-  document.getElementById("tabHist").classList.toggle("on",!today);
-  if(!today) renderHist();
+  var isHome=t==="home", isHist=t==="hist", isToday=t==="today";
+  document.getElementById("viewHome").classList.toggle("hidden",!isHome);
+  document.getElementById("viewToday").classList.toggle("hidden",!isToday);
+  document.getElementById("viewHist").classList.toggle("hidden",!isHist);
+  document.getElementById("savebar").classList.toggle("hidden",!isToday);
+  document.getElementById("tabHome").classList.toggle("on",isHome);
+  document.getElementById("tabToday").classList.toggle("on",isToday);
+  document.getElementById("tabHist").classList.toggle("on",isHist);
+  if(isHist) renderHist();
+  if(isHome) renderHome();
+  window.scrollTo(0,0);
+}
+function renderHome(){
+  var box=document.getElementById("homeContent");
+  var days=getDays();
+  if(!days.length){
+    box.innerHTML='<div class="empty"><b>No saved days yet</b><span>Save a day on the Today tab and your monthly totals will appear here.</span></div>'+
+      '<button class="dbtn" onclick="showTab(\'today\')">Open today\u2019s sheet \u2192</button>';
+    return;
+  }
+  var now=new Date();
+  var ym=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  var monthLabel=now.toLocaleString("en-US",{month:"long",year:"numeric"});
+  var md=days.filter(function(d){return (d.date||"").slice(0,7)===ym;});
+  var s={ct:0,sales:0,pay:0,os:0,vr:0,bank:0};
+  md.forEach(function(d){ var t=dayTotals(d); s.ct+=t.ct; s.sales+=t.totSales; s.pay+=t.sp+t.ep; s.os+=t.os; s.vr+=t.vr; s.bank+=t.b1diff+t.b2diff; });
+  function signed(n){ return (n>0?"+":"")+money(n); }
+  function col(n){ return n<0?"var(--red)":(n>0?"var(--green)":"var(--ink)"); }
+  function tile(k,v,extra){ return '<div class="tile"><div class="k">'+k+'</div><div class="v'+(extra&&extra.brass?" brass":"")+'"'+(extra&&extra.color?(' style="color:'+extra.color+'"'):"")+'>'+v+'</div></div>'; }
+
+  var html='<div class="dmonth">'+monthLabel+'  \u00b7  '+md.length+(md.length===1?" day":" days")+'</div>';
+  html+='<div class="dgrid">';
+  html+=tile("Cash IN", money(s.ct), {brass:true});
+  html+=tile("Total Sales", money(s.sales), {brass:true});
+  html+=tile("Payouts", money(s.pay), null);
+  html+=tile("Reg. Over/Short", signed(s.os), {color:col(s.os)});
+  html+=tile("Cash \u2212 System", signed(s.vr), {color:col(s.vr)});
+  html+=tile("Bank Over/Short", signed(s.bank), {color:col(s.bank)});
+  html+='</div>';
+  html+='<button class="dbtn" onclick="showTab(\'today\')">Open today\u2019s sheet \u2192</button>';
+
+  var recent=days.slice().sort(function(a,b){return (b.date||"").localeCompare(a.date||"");}).slice(0,5);
+  html+='<div class="dlabel">Recent days</div>';
+  recent.forEach(function(d){
+    var t=dayTotals(d), osc=t.os<0?"var(--red)":(t.os>0?"var(--green)":"var(--ink)");
+    html+='<div class="drow" onclick="editDay(\''+d.date+'\')">'+
+      '<div class="dd">'+fmtDate(d.date)+'<small>cash in '+money(t.ct)+'</small></div>'+
+      '<div class="dv" style="color:'+osc+'">'+(t.os>0?"+":"")+money(t.os)+'<small>over / short</small></div></div>';
+  });
+  box.innerHTML=html;
+}
+function showSub(s){
+  var reg=s==="reg";
+  document.getElementById("grpRegister").classList.toggle("hidden",!reg);
+  document.getElementById("grpMachines").classList.toggle("hidden",reg);
+  document.getElementById("subReg").classList.toggle("on",reg);
+  document.getElementById("subMac").classList.toggle("on",!reg);
+  window.scrollTo(0,0);
 }
 var toastT;
 function toast(msg){ var el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(function(){el.classList.remove("show");},1900); }
