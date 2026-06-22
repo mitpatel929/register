@@ -194,9 +194,13 @@
     </details>
 
     <details>
-      <summary><span>System Bill IN <span style="color:var(--mut2);font-weight:400">&middot; POS</span></span>
+      <summary><span>System Bill IN <span style="color:var(--mut2);font-weight:400">&middot; POS receipts</span></span>
         <span><span class="st" id="sysStat">$0.00</span><span class="chev">&rsaquo;</span></span></summary>
-      <div class="body" id="sysBody"></div>
+      <div class="body">
+        <div class="hint">Enter each report/receipt total &mdash; tap <b>+ amount</b> for each one (e.g. 4778, then 420). They add up to your system total.</div>
+        <div id="grp_sysrec"></div>
+        <div class="subtot"><div class="l">Total System Bill IN</div><div class="n" id="sysTotal">$0.00</div></div>
+      </div>
     </details>
 
     <details>
@@ -289,8 +293,8 @@ var storeOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storeOK=false; }
 
 /* group ids (multi-amount) and scalar ids */
-var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);MGROUPS.push("sys_"+i);});
-var OTHERGROUPS=["b1pay","b1add","b2pay","b2add","storePay","empPay"];
+var MGROUPS=[]; MACHINES.forEach(function(m,i){MGROUPS.push("cash_"+i);});
+var OTHERGROUPS=["sysrec","b1pay","b1add","b2pay","b2add","storePay","empPay"];
 var GROUPS=MGROUPS.concat(OTHERGROUPS);
 var SCALARS=["startCash","endCash","cashSale","cardSale","b1start","b2start","carryOver"];
 
@@ -378,7 +382,6 @@ function machineSection(targetId, prefix){
   host.insertAdjacentHTML("beforeend", html);
 }
 machineSection("cashBody","cash_");
-machineSection("sysBody","sys_");
 
 /* init all groups */
 MGROUPS.forEach(function(id){ buildGroup(id,false); addAmt(id,"",false); });
@@ -393,7 +396,8 @@ function sval(id){ var v=evalExpr((document.getElementById(id)||{}).value); retu
 
 function recalc(){
   var cashTotal=0, sysTotal=0;
-  MACHINES.forEach(function(m,i){ cashTotal+=sumGroup("cash_"+i).total; sysTotal+=sumGroup("sys_"+i).total; });
+  MACHINES.forEach(function(m,i){ cashTotal+=sumGroup("cash_"+i).total; });
+  sysTotal=sumGroup("sysrec").total;
   setText("cashTotal",money(cashTotal)); setText("sysTotal",money(sysTotal));
   setText("cashStat",money(cashTotal)); setText("sysStat",money(sysTotal));
 
@@ -451,11 +455,10 @@ function setText(id,t){ var el=document.getElementById(id); if(el) el.textConten
 
 /* ---- collect / load ---- */
 function collect(){
-  var d={date:document.getElementById("dDate").value, notes:document.getElementById("notes").value, cash:[], sys:[]};
+  var d={date:document.getElementById("dDate").value, notes:document.getElementById("notes").value, cash:[]};
   SCALARS.forEach(function(id){ d[id]=document.getElementById(id).value; });
   MACHINES.forEach(function(m,i){
     d.cash.push(groupValues("cash_"+i).filter(nonEmpty));
-    d.sys.push(groupValues("sys_"+i).filter(nonEmpty));
   });
   OTHERGROUPS.forEach(function(id){ d[id]=groupValues(id).filter(nonEmpty); });
   return d;
@@ -465,7 +468,12 @@ function load(d){
   document.getElementById("dDate").value=d.date||isoToday();
   SCALARS.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=(d[id]==null?"":d[id]); });
   document.getElementById("notes").value=d.notes||"";
-  MACHINES.forEach(function(m,i){ setGroup("cash_"+i,(d.cash||[])[i]); setGroup("sys_"+i,(d.sys||[])[i]); });
+  MACHINES.forEach(function(m,i){ setGroup("cash_"+i,(d.cash||[])[i]); });
+  // backward compat: older saved days stored system per-machine in d.sys; flatten into receipts
+  if(d.sysrec===undefined && Array.isArray(d.sys)){
+    var flat=[]; d.sys.forEach(function(x){ (Array.isArray(x)?x:[x]).forEach(function(v){ if(String(v).trim()!=="") flat.push(v); }); });
+    d.sysrec=flat;
+  }
   OTHERGROUPS.forEach(function(id){ setGroup(id, d[id]); });
   recalc();
 }
@@ -491,7 +499,8 @@ function fieldSum(v){
 function dayTotals(d){
   var ct=0,st=0;
   (d.cash||[]).forEach(function(x){ ct+=fieldSum(x); });
-  (d.sys||[]).forEach(function(x){ st+=fieldSum(x); });
+  if(d.sysrec!==undefined){ st=fieldSum(d.sysrec); }
+  else { (d.sys||[]).forEach(function(x){ st+=fieldSum(x); }); }
   var sp=fieldSum(d.storePay), ep=fieldSum(d.empPay);
   var gl=(evalExpr(d.endCash)||0)-(evalExpr(d.startCash)||0);
   var cashSale=fieldSum(d.cashSale), cardSale=fieldSum(d.cardSale);
@@ -531,8 +540,7 @@ function exportCSV(){
   var head=["Date","Start Cash","End Cash","Cash Sale","Card Sale","Drawer Change","Over/Short","Total Sales"];
   MACHINES.forEach(function(m){head.push("Cash "+m[0]);});
   head.push("Total Cash IN");
-  MACHINES.forEach(function(m){head.push("POS "+m[0]);});
-  head.push("Total System IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 End","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 End","Store Payout","Employee Payout","Leftover Bank Cash","Day-End Total","Notes");
+  head.push("System Bill IN","Cash-System Var","Bank1 Start","Bank1 Payout","Bank1 Add","Bank1 End","Bank2 Start","Bank2 Payout","Bank2 Add","Bank2 End","Store Payout","Employee Payout","Leftover Bank Cash","Day-End Total","Notes");
   var rows=[head.join(",")];
   days.forEach(function(d){
     var t=dayTotals(d);
@@ -541,7 +549,6 @@ function exportCSV(){
     var r=[d.date, fieldSum(d.startCash), fieldSum(d.endCash), t.cashSale.toFixed(2), t.cardSale.toFixed(2), t.gl.toFixed(2), t.os.toFixed(2), t.totSales.toFixed(2)];
     (d.cash||[]).forEach(function(x){ r.push(fieldSum(x).toFixed(2)); });
     r.push(t.ct.toFixed(2));
-    (d.sys||[]).forEach(function(x){ r.push(fieldSum(x).toFixed(2)); });
     r.push(t.st.toFixed(2),t.vr.toFixed(2),
       b1s,b1p,b1a,(b1s-b1p+b1a).toFixed(2),
       b2s,b2p,b2a,(b2s-b2p+b2a).toFixed(2),
